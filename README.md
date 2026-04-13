@@ -8,8 +8,11 @@ It will also have a three-tier memory system: short-term (last n messages), mid-
 At the Core, Merlin is simple:
 
 GUI:      HTML + CSS + JavaScript
+
 Backend:  Python + FastAPI
+
 AI:       Ollama + LlamaIndex
+
 Memory:   SQLite
 
 Merlin will not be always active (unless you tamper with Ollama yourself), and will sleep unless you text him, so your PC resources won't be a problem even if you leave him running.
