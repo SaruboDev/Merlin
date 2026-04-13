@@ -1,0 +1,6 @@
+data/*
+!data/.gitkeep
+__pycache__/
+.directory
+chat_history.db
+storage
