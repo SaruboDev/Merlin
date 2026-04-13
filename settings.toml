@@ -1,0 +1,7 @@
+[Model]
+name = "qwen3.5:9b"
+reasoning = "False"
+streaming = "on"
+
+[Global]
+max_history = 10

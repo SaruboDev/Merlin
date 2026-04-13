@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <link rel="stylesheet" href="styles.css">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
+        
+        <title>AI Assistant</title>
+    </head>
+
+    <body>
+        <div class="page-container">
+            <input id="clickMe" type="button" value="clickme">
+            <div id="chat-space">
+            </div>
+            <div id="input-space">
+                <div id="text-input">
+                    <textarea name="user-input" id="user-input" placeholder="Hi! What should we talk about?"></textarea>
+
+                    <div id="options">
+                        <img src="/svg/upload.svg" id="upload">
+
+                        <div id="rightopt">
+                            <label for="streaming" id="streaming-lbl">Streaming</label>
+                            <div id="streaming-img"><input type="checkbox" id="streaming"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script type="module" src="index.js"></script>
+    </body>
+</html> 
