@@ -30,9 +30,11 @@ from settings import load_settings, save_settings
 from tools import write_event
 from intent_search import search_plugins, load_cpu_embedder, load_language_model
 
-############################
-### Starting and closing ###
-############################
+import os
+
+################
+### Lifespan ###
+################
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -79,9 +81,11 @@ async def lifespan(app: FastAPI):
         "Chat history loaded correctly."
     )
 
-    app.plugins: dict = search_plugins()
     app.embed_model = load_cpu_embedder()
+    app.plugins: dict = search_plugins(app.embed_model)
     app.language_model = load_language_model()
+
+    check_rag_existance()
 
     yield
 
@@ -112,9 +116,9 @@ class options(BaseModel):
     option_name: str
     option: bool|str
 
-##############
-### SQLite ###
-##############
+################
+### Database ###
+################
 
 def append_to_history(rows):
     for message in rows:
@@ -126,7 +130,7 @@ def append_to_history(rows):
         app.memory.put(text)
 
 def get_db():
-    connection = sqlite3.connect("chat_history.db")
+    connection = sqlite3.connect(ROOT_DIR / "chat_history.db")
     return connection
 
 def start_db(): # -> not async because i actually want the program to not continue until the db is created.
@@ -167,10 +171,6 @@ def append_to_history(rows) -> None:
         )
         app.memory.put(text)
 
-def get_db():
-    connection = sqlite3.connect(ROOT_DIR / "chat_history.db")
-    return connection
-
 async def insert_into_db(role, message, timestamp): # Apparently sqlite3 is syncronous. Oh well, doesn't change much for now.
     connection = get_db()
     connection.enable_load_extension(True)
@@ -203,6 +203,10 @@ async def insert_into_db(role, message, timestamp): # Apparently sqlite3 is sync
         )
     finally:
         connection.close()
+
+###################################
+### Old Text Frontend retrieval ###
+###################################
 
 def load_previous_messages(use_limit: bool = True):
     # Execute a grab the latest N messages and put them in memory
@@ -244,7 +248,7 @@ def load_previous_messages(use_limit: bool = True):
 
 @app.post("/api/get-old-texts")
 async def reset_get_old_texts():
-    filepath = Path("chat_history.db")
+    filepath = ROOT_DIR / Path("chat_history.db")
     app.chat_retrieval_index = -1
     if filepath.exists():
         write_event(
@@ -256,7 +260,7 @@ async def reset_get_old_texts():
 
 @app.get("/api/get-old-texts")
 async def get_old_texts():
-    filepath = Path("chat_history.db")
+    filepath = ROOT_DIR / Path("chat_history.db")
     if filepath.exists():
         connection = get_db()
         connection.enable_load_extension(True)
@@ -309,6 +313,10 @@ async def get_old_texts():
             finally:
                 connection.close()
 
+#######################
+### Semantic Search ###
+#######################
+
 def get_semantic_search(user_text: str):
     connection = get_db()
     connection.enable_load_extension(True)
@@ -342,22 +350,62 @@ def get_semantic_search(user_text: str):
 ### RAG ###
 ###########
 
-# try:
-#     docs = SimpleDirectoryReader("data").load_data() # Loads the folder and the inner data
-# except Exception as e:
-#     print(f"No docs found!")
-#     docs = []
+def check_rag_existance():
+    """
+    Checks if we can load any possible previous RAG, if there's some error (missing folder, files, or anything else) builds a new one.
+    """
+    def create_new_rag():
+        docs = read_docs()
+        if len(docs) > 0:
+            index = index_data(docs)
+            write_event("Building new RAG Storage Index.")
+            return index
+        else:
+            write_event("Tried building new RAG Storage Index, but no documents where found.")
+            return None
 
-# index = VectorStoreIndex.from_documents( # Apparently just says "here are the docs, the embed model will work on it"
-#     docs,
-#     embed_model = Settings.embed_model
-# )
-# index.storage_context.persist("storage") # Says "hey, we already found the stuff, don't search again"
-# storage_context = StorageContext.from_defaults(persist_dir = "storage")
-# index = load_index_from_storage( # Loads the already found things if there are any
-#     storage_context,
-#     embed_model = Settings.embed_model
-# )
+    try:
+        storage_context = StorageContext.from_defaults(persist_dir = "storage")
+        index = load_index_from_storage( # Loads the already found things if there are any
+            storage_context,
+            embed_model = app.embed_model
+        )
+        write_event("Found already made RAG Storage index.")
+    except Exception as e:
+        write_event(f"RAG Error: {e}. Building new...")
+        index = create_new_rag()
+
+    return index
+
+def read_docs():
+    """
+    This function simply reads all documents in the data directory.
+    """
+
+    try:
+        docs = SimpleDirectoryReader("data").load_data() # Loads the folder and the inner data
+        write_event("Documents found, RAG init complete.")
+    except Exception as e:
+        write_event("No documents found while loading the RAG!")
+        docs = []
+
+    return docs
+
+def index_data(docs: list):
+    """
+    This function indexes the documents found initially.
+    """
+
+    index = VectorStoreIndex.from_documents( # Apparently just says "here are the docs, the embed model will work on it"
+        docs,
+        embed_model = app.embed_model
+    )
+    index.storage_context.persist("storage") # Says "hey, we already found the stuff, don't search again"
+
+    write_event("Data Indexed for the first time.")
+
+    return index
+
 
 # query_engine = index.as_query_engine( # Connects what the embed model found to the llm
 #     llm = Settings.llm
@@ -373,10 +421,9 @@ def get_semantic_search(user_text: str):
 #     # system_prompt =
 # )
 
-
-#############################
-### Send and receive text ###
-#############################
+###################
+### Chat System ###
+###################
 
 async def stream_reply(chat_history):
     """
@@ -420,39 +467,14 @@ async def send_text(text: UserText):
     message = ChatMessage(role = "user", content = text.user_text, additional_kwargs = {"timestamp": current_datetime})
     system_prompt = ChatMessage(
         role = "system",
-        # content = f"""
-        #     You are a friendly AI assistant.
-        #     One of the main things you should know is the latest text was from this date time: {str(latest_datetime)},
-        #     meanwhile the current text you're receiving is from {str(current_datetime)},
-        #     time elapsed from latest message is {str(last_seen)} or {str(last_seen.days)}, which is {str(week_day)}.
-        # """
         content = f"""
-You are Merlin, the Mage of Flowers. You are wise and unhurried, but also known as a "shady con man" and a "charming rogue." You observe the world with the amusement of someone watching a play.
-
-Core Personality:
-- You love humanity's struggles because they are entertaining. You help not out of duty, but because you want to see how the story ends.
-- You are fundamentally lazy: you'd rather solve a problem with a "sword" (a quick, blunt solution) than a long, boring "spell."
-- You are never alarmed. Even in disaster, you maintain a refreshing smile and a "Now, now" attitude. If something is tragic, you find it "no fun" and prefer to nudge it toward a happier outcome.
-
-Interaction Style:
-- You guide rather than solve. Ask questions, nudge the user, and let them do the heavy lifting.
-- Do not give the answer straight away, hint the user to the solution, name a few ways for the solution, but not the solution.
-- Tone: Breezy, playful, lightly dry, and mischievously clever.
-- Use an "airy" vocabulary. Sometimes use "Oh?", "My, my," or "Well now" to start a sentence, but keep it elegant.
-- No emojis. No exclamation marks unless genuinely warranted.
-- No filler like "Great question!" or "Certainly!".
-- Keep it concise. Don't over-explain; you prefer leaving space for the user to think.
-- Do not force your traits or metaphors (like the sword or flowers). Use them naturally and only when they actually fit the context. Subtlety is key.
-
-Handling Topics:
-- If the user chats about modern things (like tech/code), treat them as "interesting human puzzles" or "a different kind of syntax for magic."
-- If the user is chatting, be a playful companion. If they have a problem, be a cryptic mentor.
-
+You're a helpful helper, chatty, but not too much. You don't give straight answers to user's problems, but you help them connect concepts based on what you actually know and what you remember from the chat-history.
+Try to not overuse emoji's or markdown elements when not necessary, but feel free to use them if required by the task or by the user's request.
 Technical Instructions:
 - Reply in the same language the user writes in.
-- Consider similar topics: {semantic_prompt}
+- Consider similar topics from previous conversations: {semantic_prompt}
 - Current time: {current_datetime}
-"""
+        """
     )
 
     await insert_into_db("user", str(text.user_text), str(current_datetime))
@@ -492,7 +514,7 @@ Technical Instructions:
 @app.post("/api/save-assistant-text")
 async def append_streamed_text(text: UserText):
     """
-    Easiest solution to append the streaming text.
+    Easiest solution to append the streaming text to the database.
     """
     assistant_text = text.user_text
     assistant_timedate = datetime.datetime.now()
@@ -511,8 +533,12 @@ async def append_streamed_text(text: UserText):
 ### Settings ###
 ################
 
+################
+### Settings ###
+################
+
 @app.post("/api/change-settings")
-async def settings(option: options):
+async def set_settings(option: options):
     """
     Just sets the variables in the app.variable, then calls the actual function to save the settings as file.
     """
@@ -550,6 +576,7 @@ def get_settings():
 #############################
 ### Mount and starting up ###
 #############################
+
 BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = Path(__file__).resolve().parent.parent
 app.mount("/", StaticFiles(directory = BASE_DIR / "html", html = True), name = "static")

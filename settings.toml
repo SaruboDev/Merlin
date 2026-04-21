@@ -5,3 +5,4 @@ streaming = "on"
 
 [Global]
 max_history = 10
+language = "it"

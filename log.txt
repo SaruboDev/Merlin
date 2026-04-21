@@ -1,0 +1,12 @@
+2026-04-21 15:22:50.488507 Starting application.
+2026-04-21 15:22:50.489075 Settings loaded:
+{'Model': {'model_name': 'qwen3.5:9b', 'reasoning': 'False', 'streaming': 'on'}, 'Global': {'max_history': 10, 'language': 'it'}}
+2026-04-21 15:22:50.489162 Memory Buffer Initialized.
+2026-04-21 15:22:50.489583 DataBase loaded/initialized correctly.
+2026-04-21 15:22:50.489896 Loaded previous messages correctly.
+2026-04-21 15:22:50.490099 Chat history loaded correctly.
+2026-04-21 15:22:55.129167 Search Plugin: Done.
+2026-04-21 15:22:55.498599 No documents found while loading the RAG!
+2026-04-21 15:22:55.498685 Tried building new RAG Storage Index, but no documents where found.
+2026-04-21 15:24:33.323529 Deleted app variables correctly.
+2026-04-21 15:24:33.323687 App closed.

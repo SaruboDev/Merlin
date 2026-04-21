@@ -1,19 +1,14 @@
 import os
 from typing import Any
 
-from torch._numpy import True_
-os.environ['TRANSFORMERS_OFFLINE'] = "1"
-os.environ['HF_HUB_OFFLINE'] = "1"
-
 import numpy as np
 import spacy
 from spacy.matcher import PhraseMatcher
 
-import pathlib
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
 from pathlib import Path
 import importlib.util
-
-import time
 
 import json
 
@@ -21,10 +16,12 @@ from tools import write_event
 
 from sentence_transformers import SentenceTransformer, util
 from typing import Any
+"""
+NOTE: Gotta search for another way to run the plugins because i also gotta give which intent got extracted.
+NOTE2: Also gotta add the language settings to load/download the correct model from spacy.
+"""
 
-"""
-Questo script prende le query dell'utente estrae le info necessarie per trovare ed eseguire plugin/script.
-"""
+ROOT_DIR = Path(__file__).resolve().parent.parent
 
 def extract_keywords(manifest: Path):
     """
@@ -46,11 +43,10 @@ def search_plugins(model: SentenceTransformer) -> dict:
     """
     This function searches all plugins that have the manifest.json file inside them.
     """
-    os.chdir("..")
 
     found_plugins: dict = {}
 
-    for root, dirs, files in os.walk("plugins/"):
+    for root, dirs, files in os.walk(ROOT_DIR / "plugins/"):
         if "manifest.json" in files:
             plugin_path = Path(root)
             plugin_name: str = root.strip("plugins/")
@@ -58,7 +54,8 @@ def search_plugins(model: SentenceTransformer) -> dict:
             keywords, intent_keywords = extract_keywords(plugin_path / "manifest.json")
             found_plugins[plugin_name] = {
                 "executable": plugin_path / "main.py",
-                "keywords": model.encode(keywords, convert_to_numpy = True, normalize_embeddings = True),
+                # "keywords": model.encode(keywords, convert_to_numpy = True, normalize_embeddings = True),
+                "keywords": model.get_text_embedding_batch(keywords),
                 "intent_keywords": intent_keywords
             }
 
@@ -70,9 +67,14 @@ def load_cpu_embedder() -> SentenceTransformer:
     """
     Loads the cpu embedding model.
     """
-    model: SentenceTransformer = SentenceTransformer(
-        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        device = "cpu")
+    # model: SentenceTransformer = SentenceTransformer(
+    #     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    #     device = "cpu")
+
+    model = HuggingFaceEmbedding(
+        model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        device = "cpu"
+    )
     return model
 
 def load_language_model():
@@ -91,14 +93,7 @@ def load_language_model():
         language_model = spacy.load("en_core_web_sm")
     return language_model
 
-model = load_cpu_embedder()
-plugins = search_plugins(model)
-language_model = load_language_model()
-
 def run_plugin(path: Path): # NGL i couldn't find anything about this so i asked gpt
-    """
-    NOTE: Gotta search for another way because i also gotta give which intent got extracted.
-    """
     try:
         spec = importlib.util.spec_from_file_location("plugin", path)
         module = importlib.util.module_from_spec(spec)
@@ -129,12 +124,18 @@ def extract_intent(query: str, plugin_exec, intent_keywords):
         run_plugin(plugin_exec)
 
 def should_run_plugin(query: str, plugins: dict, model: SentenceTransformer):
-    query_embed = model.encode(query, convert_to_numpy = True, normalize_embeddings = True)
+    # query_embed = model.encode(query, convert_to_numpy = True, normalize_embeddings = True)
+    query_embed = np.array(model.get_text_embedding(query))
 
     plugin_distances = {}
     for name, plugin in zip(plugins.keys(), plugins.values()):
 
-        similarity_cos = util.cos_sim(plugin["keywords"], query_embed).tolist()
+        similarity_cos = []
+        for keyword in plugin["keywords"]:
+            similarity = util.cos_sim(np.array(keyword), query_embed)
+            similarity_cos.append(similarity)
+
+        # similarity_cos = util.cos_sim(plugin["keywords"], query_embed).tolist()
         similarity_cos = [i[0] for i in similarity_cos]
 
         plugin_distances[name] = np.max(similarity_cos)
@@ -145,18 +146,8 @@ def should_run_plugin(query: str, plugins: dict, model: SentenceTransformer):
         extract_intent(query, plugin["executable"], plugin["intent_keywords"])
 
 
-superman = 23 # i want to print the variable superman
-should_run_plugin("i want to print the variable superman", plugins, model)
-# def find_something_local(query: str):
-#     s = time.time()
-
-#     embedding = model.encode(query, convert_to_numpy=True)
-
-#     print(f"Time CPU: {(time.time() - s):.4f} seconds")
-#     return embedding
-
-# embed = find_something_local("We should test this")
-
-# embed2 = model.encode("Can you test this?")
-
-# print("Similarity: ", util.cos_sim(embed, embed2).item())
+# model = load_cpu_embedder()
+# plugins = search_plugins(model)
+# language_model = load_language_model()
+# superman = 23 # i want to print the variable superman
+# should_run_plugin("i want to print the variable superman", plugins, model)

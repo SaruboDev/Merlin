@@ -1,0 +1,10 @@
+{
+  "keywords": [
+    "print me the variable",
+    "can you print me this variable?",
+    "i want to print this"
+  ],
+  "intent_keywords": {
+    "intent_print": ["print"]
+  }
+}
