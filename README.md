@@ -2,7 +2,7 @@
 Your AI assistant for your study and researching needs.
 
 This tool gives you space to learn without having the solutions to the problems you'll face given to you easily, Merlin will help you organize your documents, research papers, and even your own notes!
-It will also have a three-tier memory system: short-term (last n messages), mid-term (periodic summarization), long-term (vector RAG of full history).
+It will also have a three-tier memory system: short-term (last n messages), mid-term (periodic summarization), long-term (similarity search on the chat history + RAG system on the documents).
 
 ## How does it work?
 At the Core, Merlin is simple:
@@ -22,13 +22,13 @@ As of now, Merlin it's in Early Stage of Development, he can:
 - Stay totally local, so your private things won't be shared.
 - Chat with you and remember previous sessions thanks to the chat history.
 - Streamed responses.
-- 
+- Similarity Search from the query on the full chat history, along with the ChatMemoryBuffer for the last N tokens.
 
 ## Roadmap
-- Complete RAG and Knowledge Graph, they will activate "manually" (not for you) so they won't always research through your stuff each time you send a text. [80% completed]
+- Complete RAG and Knowledge Graph, they will activate "manually" (not for you) so they won't always research through your stuff each time you send a text. [80% completed [only misses actually including the RAG in the pipeline, meanwhile the KG it's still at 0%]
 - TTS + Vocal transcription [0% Completed]
 - Markdown editor (Obsidian Style) with Merlin inline, every once in a while, Merlin will check what you wrote and help you fix errors, or even suggest similar or strictly correlated topics you might find useful from your chat history and his RAG/KG! [0% Completed]
-- Plugin System for intent -> local action. You could write any script you'd like, for example, a script that will create folders and files for a new Python project, and you'll only have to say "Hey Merlin, can you create a new project in [folder] with git enabled, please?" [0% completed]
+- Plugin System for intent -> local action. You could write any script you'd like, for example, a script that will create folders and files for a new Python project, and you'll only have to say "Hey Merlin, can you create a new project in [folder] with git enabled, please?" [80% completed]
 - Multi-Chat system with cross-session RAG
 
 ## Stack
